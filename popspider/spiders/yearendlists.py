@@ -23,10 +23,10 @@ class YearEndListSpider(scrapy.Spider):
 
 	def start_requests(self):
 		"""Scrape all pages from Wikipedia and register post-response callbacks"""
-		urls = [self.get_wiki_url(year) for year in range(1959, 2022)]
+		urls_by_year = {year: self.get_wiki_url(year) for year in range(1959, 2022)}
 
-		for url in urls:
-			yield scrapy.Request(url=url, callback=self.parse, errback=self.errback)
+		for (year, url) in urls_by_year.items():
+			yield scrapy.Request(url=url, callback=self.parse, errback=self.errback, cb_kwargs={'year': year })
 			
 	def errback(self):
 		"""Handles error responses"""
@@ -34,17 +34,12 @@ class YearEndListSpider(scrapy.Spider):
 		response = failure.value.response
 		ERRORS.append('HTTP error on request URL {0}, status = {1}'.format(request_url, response.status))
 
-	def parse(self, response):
-		yearmatch = re.search(r'\d+$', response.url)
-		if yearmatch:
-			year = yearmatch.group()
-
-			for wikitable in response.css(yearend_table_wiki_selector).extract():
-				if re.search(r'Year\-End', wikitable):
-					yield {
-						'year': year,
-						'data': wikitable
-					}
+	def parse(self, response, year):
+		for wikitable in response.css(yearend_table_wiki_selector).extract():
+			yield {
+				'year': year,
+				'data': wikitable
+			}
 
 
 def main():
