@@ -1,1 +1,5 @@
-Scrapy==1.6.0
+Scrapy==2.6.0
+
+# Downgrade of pyOpenSSL from 22.3 to 22.0 needed in Windows 10 to avoid SSL bugs. 
+# (see: https://stackoverflow.com/questions/9159757/can-i-add-comments-to-a-pip-requirements-file)
+pyOpenSSL==22.0.0

@@ -1,3 +1,7 @@
+# Popspider-specific output files/directories
+output/
+output.csv
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
