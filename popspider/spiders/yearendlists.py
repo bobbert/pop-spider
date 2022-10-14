@@ -35,11 +35,36 @@ class YearEndListSpider(scrapy.Spider):
 		ERRORS.append('HTTP error on request URL {0}, status = {1}'.format(request_url, response.status))
 
 	def parse(self, response, year):
-		for wikitable in response.css(yearend_table_wiki_selector).extract():
-			yield {
-				'year': year,
-				'data': wikitable
-			}
+		"""Parse HTML response retrieved from URL, with year attached""" 
+		for wikitable in response.css(yearend_table_wiki_selector):
+			for selected_row in wikitable.css('tr'):
+				if (len(selected_row.css('td').getall()) >= 3):
+					position = selected_row.css('td:first-child::text').get()
+					artist_cell = selected_row.css('td:nth-child(2)')
+					song_cell = selected_row.css('td:nth-child(3)')
+					yield {
+						'position': position,
+						'artist': self.to_artist_or_song_displayed(artist_cell),
+						'song': self.to_artist_or_song_displayed(song_cell),
+						'year': year
+					}
+
+
+	def to_artist_or_song_displayed(self, selected_cell):
+		"""Returns artist/song cell value to be displayed, as either plain text or hyperlink"""
+		if selected_cell.css('a').get() is None:
+			return selected_cell.css('::text').get()
+		else:
+			raw_url = selected_cell.css('a::attr(href)').get()
+			name = selected_cell.css('a::text').get()
+			return self.to_excel_hyperlink(raw_url, name)
+
+	def to_excel_hyperlink(self, relative_url, name):
+		url = self.resolve_wiki_links(relative_url)
+		return '=HYPERLINK("{0}", "{1}")'.format(url, name)
+
+	def resolve_wiki_links(self, text):
+		return text.replace("/wiki/", "https://en.wikipedia.org/wiki/")
 
 
 def main():
