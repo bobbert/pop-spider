@@ -4,19 +4,22 @@ import re
 
 import scrapy
 from scrapy.crawler import CrawlerProcess
+from threading import Lock
 
 from fileutil import create_filepath, remove_files_recursively
 
 ERRORS = []
 
-# our main collections 
-songs_by_artist = {}
-songs_by_year = {}
+# collection of original year for dupe resolution
+# NOTE: responses aren't guaranteed to arrive ordered by year, and this 
+# may not actually be the original year.
+original_year_by_song = {}
 
 yearend_table_wiki_selector = 'table.wikitable'
 
 class YearEndListSpider(scrapy.Spider):
 	name = 'yearendlists'
+	lock = Lock()
 
 	def get_wiki_url(self, year):
 		return 'https://en.wikipedia.org/wiki/Billboard_Year-End_Hot_100_singles_of_{0}'.format(year)
@@ -39,24 +42,40 @@ class YearEndListSpider(scrapy.Spider):
 		for wikitable in response.css(yearend_table_wiki_selector):
 			for selected_row in wikitable.css('tr'):
 				if (len(selected_row.css('td').getall()) >= 3):
-					position = selected_row.css('td:first-child::text').get()
-					artist_cell = selected_row.css('td:nth-child(2)')
-					song_cell = selected_row.css('td:nth-child(3)')
+
+					# rows should appear in wikitable as:
+					# <tr>
+					#   <td> rank # in year-end </td>
+					#   <td> artist info (name and/or link) </td>
+					#   <td> song info (name and/or link) </td>
+					# </tr>
+
+					artist_cell_value = self.to_artist_or_song_displayed(selected_row.css('td:nth-child(2)'))
+					song_cell_value = self.to_artist_or_song_displayed(selected_row.css('td:nth-child(3)'))
+					song_artist_key = '|'.join([artist_cell_value, song_cell_value])
+
 					yield {
-						'position': position,
-						'artist': self.to_artist_or_song_displayed(artist_cell),
-						'song': self.to_artist_or_song_displayed(song_cell),
-						'year': year
+						'position': selected_row.css('td:first-child::text').get(),
+						'artist': artist_cell_value,
+						'song': song_cell_value,
+						'year': self.get_resolved_year(song_artist_key, year)
 					}
 
+
+	def song_name_key(self, selected_cell):
+		"""Returns artist cell value as key to be referenced"""
+		if selected_cell.css('a').get() is None:
+			return selected_cell.css('::text').get().strip()
+		else:
+			return selected_cell.css('a::attr(href)').get()
 
 	def to_artist_or_song_displayed(self, selected_cell):
 		"""Returns artist/song cell value to be displayed, as either plain text or hyperlink"""
 		if selected_cell.css('a').get() is None:
-			return selected_cell.css('::text').get()
+			return selected_cell.css('::text').get().strip()
 		else:
 			raw_url = selected_cell.css('a::attr(href)').get()
-			name = selected_cell.css('a::text').get()
+			name = selected_cell.css('a::text').get().strip()
 			return self.to_excel_hyperlink(raw_url, name)
 
 	def to_excel_hyperlink(self, relative_url, name):
@@ -65,6 +84,27 @@ class YearEndListSpider(scrapy.Spider):
 
 	def resolve_wiki_links(self, text):
 		return text.replace("/wiki/", "https://en.wikipedia.org/wiki/")
+
+	def get_resolved_year(self, song_artist_key, year):
+		"""Check year lookup dictonary for previously instances of same song"""
+		try:
+			# parse() runs on a different thread for each year's URL response.
+			# all lookups on original_year_by_song need to be thread-safe.
+			self.lock.acquire()
+			if song_artist_key in original_year_by_song:
+				original_year = original_year_by_song[song_artist_key]
+				if year > original_year:
+					return '{0} ({1})'.format(year, original_year)
+				elif year < original_year:
+					return '{0} ({1}) ***'.format(year, original_year)
+				else:
+					return year
+			else:
+				original_year_by_song[song_artist_key] = year
+				return year
+
+		finally:
+			self.lock.release()
 
 
 def main():
