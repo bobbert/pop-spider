@@ -26,7 +26,7 @@ class YearEndListSpider(scrapy.Spider):
 
 	def start_requests(self):
 		"""Scrape all pages from Wikipedia and register post-response callbacks"""
-		urls_by_year = {year: self.get_wiki_url(year) for year in range(1959, 2022)}
+		urls_by_year = {year: self.get_wiki_url(year) for year in range(1959, 2023)}
 
 		for (year, url) in urls_by_year.items():
 			yield scrapy.Request(url=url, callback=self.parse, errback=self.errback, cb_kwargs={'year': year })
