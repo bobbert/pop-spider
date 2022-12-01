@@ -71,14 +71,28 @@ class YearEndListSpider(scrapy.Spider):
 
 	def to_artist_or_song_displayed(self, selected_cell):
 		"""Returns artist/song cell value to be displayed, as either plain text or hyperlink"""
-		if selected_cell.css('a').get() is None:
-			return selected_cell.css('::text').get().strip()
-		else:
-			raw_url = selected_cell.css('a::attr(href)').get()
-			name = selected_cell.css('a::text').get().strip()
-			return self.to_excel_hyperlink(raw_url, name)
+		text_nodes = [textnode.get() for textnode in selected_cell.css('::text')]
+		excel_hyperlinks = [self.link_node_to_excel_hyperlink(node) for node in selected_cell.css('a')]
 
-	def to_excel_hyperlink(self, relative_url, name):
+		result_text = ""
+		larger_len = max(len(text_nodes), len(excel_hyperlinks))
+		for i in range(larger_len):
+			if i < len(text_nodes):
+				result_text += text_nodes[i]
+			else:
+				result_text += " "
+
+			if i < len(excel_hyperlinks):
+				result_text += excel_hyperlinks[i]
+
+		return result_text
+
+	def link_node_to_excel_hyperlink(self, link_node):
+		raw_url = link_node.css('::attr(href)').get()
+		name = link_node.css('::text').get().strip()
+		return self.url_to_excel_hyperlink(raw_url, name)
+
+	def url_to_excel_hyperlink(self, relative_url, name):
 		url = self.resolve_wiki_links(relative_url)
 		return '=HYPERLINK("{0}", "{1}")'.format(url, name)
 
